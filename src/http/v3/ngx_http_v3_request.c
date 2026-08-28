@@ -451,7 +451,19 @@ ngx_http_v3_cleanup_connection(void *data)
 static void
 ngx_http_v3_cleanup_request(void *data)
 {
+    ngx_uint_t           err;
     ngx_http_request_t  *r = data;
+
+    if (r->stream_connect_reset) {
+        if (r->stream_connect == NGX_HTTP_STREAM_CONNECT_WEBSOCKET) {
+            err = NGX_HTTP_V3_ERR_REQUEST_CANCELLED;
+
+        } else {
+            err = NGX_HTTP_V3_ERR_CONNECT_ERROR;
+        }
+
+        ngx_quic_reset_stream(r->connection, err);
+    }
 
     if (!r->response_sent) {
         r->connection->error = 1;

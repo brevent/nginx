@@ -3993,6 +3993,12 @@ ngx_http_upstream_process_upgraded(ngx_http_request_t *r,
                 }
 
                 if (n == NGX_ERROR) {
+                    if (r->stream_connect
+                        && (upstream->read->error || upstream->write->error))
+                    {
+                        r->stream_connect_reset = 1;
+                    }
+
                     ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
                     return;
                 }
@@ -4052,6 +4058,15 @@ ngx_http_upstream_process_upgraded(ngx_http_request_t *r,
     {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0,
                        "http upstream upgraded done");
+
+        if (r->stream_connect
+            && (upstream->read->error || upstream->write->error))
+        {
+            r->stream_connect_reset = 1;
+            ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
+            return;
+        }
+
         ngx_http_upstream_finalize_request(r, u, 0);
         return;
     }

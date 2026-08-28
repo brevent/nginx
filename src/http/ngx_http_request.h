@@ -583,6 +583,7 @@ struct ngx_http_request_s {
     unsigned                          health_check:1;
     unsigned                          stream_connect:2;
     unsigned                          stream_connect_upgraded:1;
+    unsigned                          stream_connect_reset:1;
 
     /* used to parse HTTP headers */
 
