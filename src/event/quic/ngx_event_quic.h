@@ -118,6 +118,7 @@ struct ngx_quic_stream_s {
     uint64_t                       recv_window;
     uint64_t                       recv_last;
     uint64_t                       recv_final_size;
+    ngx_uint_t                     reset_code;
     ngx_quic_buffer_t              send;
     ngx_quic_buffer_t              recv;
     ngx_quic_stream_send_state_e   send_state;
