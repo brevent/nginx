@@ -4843,6 +4843,7 @@ ngx_http_v2_terminate_stream(ngx_http_v2_connection_t *h2c,
 void
 ngx_http_v2_close_stream(ngx_http_v2_stream_t *stream, ngx_int_t rc)
 {
+    ngx_uint_t                 status;
     ngx_pool_t                *pool;
     ngx_event_t               *ev;
     ngx_connection_t          *fc;
@@ -4868,11 +4869,18 @@ ngx_http_v2_close_stream(ngx_http_v2_stream_t *stream, ngx_int_t rc)
     if (!stream->rst_sent && !h2c->connection->error) {
 
         if (!stream->out_closed) {
-            if (ngx_http_v2_send_rst_stream(h2c, node->id,
-                                      fc->timedout ? NGX_HTTP_V2_PROTOCOL_ERROR
-                                                   : NGX_HTTP_V2_INTERNAL_ERROR)
-                != NGX_OK)
-            {
+            if (stream->request->stream_connect_reset) {
+                status = (stream->request->stream_connect
+                          == NGX_HTTP_STREAM_CONNECT_WEBSOCKET)
+                         ? NGX_HTTP_V2_CANCEL
+                         : NGX_HTTP_V2_CONNECT_ERROR;
+
+            } else {
+                status = fc->timedout ? NGX_HTTP_V2_PROTOCOL_ERROR
+                                      : NGX_HTTP_V2_INTERNAL_ERROR;
+            }
+
+            if (ngx_http_v2_send_rst_stream(h2c, node->id, status) != NGX_OK) {
                 h2c->connection->error = 1;
             }
 

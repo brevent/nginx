@@ -320,6 +320,10 @@ ngx_quic_shutdown_stream_send(ngx_connection_t *c)
 
     qs = c->quic;
 
+    if (qs->reset_code) {
+        return NGX_OK;
+    }
+
     if (qs->send_state != NGX_QUIC_STREAM_SEND_READY
         && qs->send_state != NGX_QUIC_STREAM_SEND_SEND)
     {
@@ -1137,6 +1141,22 @@ ngx_quic_close_stream(ngx_quic_stream_t *qs)
     qc = ngx_quic_get_connection(pc);
 
     if (!qc->closing) {
+
+        if (qs->reset_code) {
+            if (qs->acked != qs->sent
+                && (qs->send_state == NGX_QUIC_STREAM_SEND_SEND
+                    || qs->send_state == NGX_QUIC_STREAM_SEND_DATA_SENT))
+            {
+                return NGX_OK;
+            }
+
+            if (ngx_quic_do_reset_stream(qs, qs->reset_code) != NGX_OK) {
+                return NGX_ERROR;
+            }
+
+            qs->reset_code = 0;
+        }
+
         /* make sure everything is sent and final size is received */
 
         if (qs->recv_state == NGX_QUIC_STREAM_RECV_RECV) {
