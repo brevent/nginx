@@ -75,6 +75,8 @@ static ssize_t ngx_http_upstream_upgraded_recv_downstream(ngx_http_request_t *r,
     u_char *buf, size_t size);
 static ssize_t
     ngx_http_upstream_upgraded_send_downstream(ngx_http_request_t *r);
+static ngx_int_t ngx_http_upstream_upgraded_shutdown(ngx_http_request_t *r,
+    ngx_uint_t to_downstream);
 static void ngx_http_upstream_process_upgraded(ngx_http_request_t *r,
     ngx_uint_t from_upstream, ngx_uint_t do_write);
 static void
@@ -3937,6 +3939,36 @@ send:
 }
 
 
+static ngx_int_t
+ngx_http_upstream_upgraded_shutdown(ngx_http_request_t *r,
+    ngx_uint_t to_downstream)
+{
+    ngx_http_upstream_t  *u;
+
+    if (to_downstream) {
+#if (NGX_HTTP_V3)
+        if (r->http_version == NGX_HTTP_VERSION_30) {
+            return ngx_quic_shutdown_stream(r->connection, NGX_WRITE_SHUTDOWN);
+        }
+#endif
+
+        return ngx_http_send_special(r, NGX_HTTP_LAST);
+    }
+
+    u = r->upstream;
+
+    if (ngx_shutdown_socket(u->peer.connection->fd, NGX_WRITE_SHUTDOWN)
+        == -1)
+    {
+        ngx_connection_error(r->connection, ngx_socket_errno,
+                             ngx_shutdown_socket_n " failed");
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
+}
+
+
 static void
 ngx_http_upstream_process_upgraded(ngx_http_request_t *r,
     ngx_uint_t from_upstream, ngx_uint_t do_write)
@@ -4078,6 +4110,47 @@ ngx_http_upstream_process_upgraded(ngx_http_request_t *r,
         break;
     }
 
+    if (r->stream_connect && !upstream->read->error
+#if (NGX_HTTP_SSL)
+        && upstream->ssl == NULL
+#endif
+        && u->conf->half_close)
+    {
+        if (downstream->error
+            || downstream->read->error || downstream->write->error)
+        {
+            ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
+            return;
+        }
+
+        if (upstream->read->eof && downstream->read->eof
+            && u->buffer.pos == u->buffer.last
+            && u->from_client.pos == u->from_client.last)
+        {
+            ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                           "http upstream upgraded full done");
+            ngx_http_upstream_finalize_request(r, u, 0);
+            return;
+        }
+
+        if (src->read->eof && b->pos == b->last && !u->half_closed) {
+            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                           "http upstream upgraded %s shutdown",
+                           from_upstream ? "client" : "upstream");
+
+            if (ngx_http_upstream_upgraded_shutdown(r, from_upstream)
+                == NGX_ERROR)
+            {
+                ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
+                return;
+            }
+
+            u->half_closed = 1;
+        }
+
+        goto next;
+    }
+
     if ((upstream->read->eof && u->buffer.pos == u->buffer.last)
         || (downstream->read->eof && u->from_client.pos == u->from_client.last)
         || (downstream->read->eof && upstream->read->eof))
@@ -4087,6 +4160,8 @@ ngx_http_upstream_process_upgraded(ngx_http_request_t *r,
         ngx_http_upstream_finalize_request(r, u, 0);
         return;
     }
+
+next:
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
@@ -5204,7 +5279,7 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
         return;
     }
 
-    if (rc == 0) {
+    if (rc == 0 && !r->response_sent) {
 
         if (ngx_http_upstream_process_trailers(r, u) != NGX_OK) {
             ngx_http_finalize_request(r, NGX_ERROR);

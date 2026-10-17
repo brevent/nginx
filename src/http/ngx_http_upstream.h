@@ -199,6 +199,7 @@ typedef struct {
     ngx_flag_t                       intercept_errors;
     ngx_flag_t                       cyclic_temp_file;
     ngx_flag_t                       force_ranges;
+    ngx_flag_t                       half_close;
 
     ngx_path_t                      *temp_path;
 
@@ -417,6 +418,7 @@ struct ngx_http_upstream_s {
     unsigned                         keepalive:1;
     unsigned                         upgrade:1;
     unsigned                         allow_stream_connect:1;
+    unsigned                         half_closed:1;
     unsigned                         error:1;
 
     unsigned                         request_sent:1;
