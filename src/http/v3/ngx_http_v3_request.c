@@ -980,8 +980,10 @@ ngx_http_v3_init_pseudo_headers(ngx_http_request_t *r)
         host.len = r->host_end - r->host_start;
         host.data = r->host_start;
 
-        if (ngx_http_validate_host(&host, &port, r->pool, 0) != NGX_OK) {
-            goto validate_host;
+        rc = ngx_http_validate_host(&host, &port, r->pool, 0);
+
+        if (rc != NGX_OK) {
+            goto invalid_host;
         }
 
         if (port == 0) {
@@ -1050,14 +1052,14 @@ construct:
         return NGX_ERROR;
     }
 
-validate_host:
-
     if (r->host_end) {
 
         host.len = r->host_end - r->host_start;
         host.data = r->host_start;
 
         rc = ngx_http_validate_host(&host, &port, r->pool, 0);
+
+    invalid_host:
 
         if (rc == NGX_DECLINED) {
             ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
